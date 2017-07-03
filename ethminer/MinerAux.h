@@ -22,6 +22,7 @@
  * CLI module for mining.
  */
 
+#include <libethcore\pack.h>
 #include <thread>
 #include <chrono>
 #include <fstream>
@@ -654,12 +655,18 @@ private:
 
 		GenericFarm<EthashProofOfWork> f;
 		map<string, GenericFarm<EthashProofOfWork>::SealerDescriptor> sealers;
-		sealers["cpu"] = GenericFarm<EthashProofOfWork>::SealerDescriptor{&EthashCPUMiner::instances, [](GenericMiner<EthashProofOfWork>::ConstructionInfo ci){ return new EthashCPUMiner(ci); }};
+		GenericFarm<EthashProofOfWork>::SealerDescriptor cpu;
+		cpu = GenericFarm<EthashProofOfWork>::SealerDescriptor{ &EthashCPUMiner::instances, [](GenericMiner<EthashProofOfWork>::ConstructionInfo ci){ return new EthashCPUMiner(ci); } };
+		sealers["cpu"] = cpu;
 #if ETH_ETHASHCL
-		sealers["opencl"] = GenericFarm<EthashProofOfWork>::SealerDescriptor{&EthashGPUMiner::instances, [](GenericMiner<EthashProofOfWork>::ConstructionInfo ci){ return new EthashGPUMiner(ci); }};
+		GenericFarm<EthashProofOfWork>::SealerDescriptor opencl;
+		opencl = GenericFarm<EthashProofOfWork>::SealerDescriptor{ &EthashGPUMiner::instances, [](GenericMiner<EthashProofOfWork>::ConstructionInfo ci){ return new EthashGPUMiner(ci); } };
+		sealers["opencl"] = opencl;
 #endif
 #if ETH_ETHASHCUDA
-		sealers["cuda"] = GenericFarm<EthashProofOfWork>::SealerDescriptor{ &EthashCUDAMiner::instances, [](GenericMiner<EthashProofOfWork>::ConstructionInfo ci){ return new EthashCUDAMiner(ci); } };
+		GenericFarm<EthashProofOfWork>::SealerDescriptor cuda;
+		cuda = GenericFarm<EthashProofOfWork>::SealerDescriptor{ &EthashCUDAMiner::instances, [](GenericMiner<EthashProofOfWork>::ConstructionInfo ci){ return new EthashCUDAMiner(ci); } };
+		sealers["cuda"] = cuda;
 #endif
 		f.setSealers(sealers);
 		f.onSolutionFound([&](EthashProofOfWork::Solution) { return false; });
@@ -1015,6 +1022,11 @@ private:
 
 			while (client.isRunning())
 			{
+				//to stop minerlog. editor :wany  
+				if (!pack::isInitOver)
+					continue;
+				//to stop minerlog. editor :wany   
+
 				auto mp = f.miningProgress();
 				f.resetMiningProgress();
 				if (client.isConnected())
