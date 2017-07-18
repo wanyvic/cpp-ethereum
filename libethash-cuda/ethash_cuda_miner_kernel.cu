@@ -130,8 +130,7 @@ void ethash_generate_dag(
 		CUDA_SAFE_CALL(cudaDeviceSynchronize());
 		printf(".");
 	}
-	printf("\n");
-	//printf("GPU#%d 100%%\n");
+	printf("GPU#%d 100%%\n");
 	CUDA_SAFE_CALL(cudaGetLastError());
 }
 

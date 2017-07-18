@@ -33,76 +33,75 @@ along with cpp-ethereum.  If not, see <http://www.gnu.org/licenses/>.
 #include <chrono>
 #include <libethash-cuda/ethash_cuda_miner.h>
 #include <libethcore\pack.h>
-
-
 using namespace std;
 using namespace dev;
 using namespace eth;
+
 namespace dev
 {
-	namespace eth
+namespace eth
+{
+	class EthashCUDAHook : public ethash_cuda_miner::search_hook
 	{
-		class EthashCUDAHook : public ethash_cuda_miner::search_hook
+	public:
+		EthashCUDAHook(EthashCUDAMiner* _owner) : m_owner(_owner) {}
+		EthashCUDAHook(EthashCUDAHook const&) = delete;
+
+		void abort()
 		{
-		public:
-			EthashCUDAHook(EthashCUDAMiner* _owner) : m_owner(_owner) {}
-			EthashCUDAHook(EthashCUDAHook const&) = delete;
-
-			void abort()
-			{
-				{
-					UniqueGuard l(x_all);
-					if (m_aborted)
-						return;
-					//		cdebug << "Attempting to abort";
-
-					m_abort = true;
-				}
-				// m_abort is true so now searched()/found() will return true to abort the search.
-				// we hang around on this thread waiting for them to point out that they have aborted since
-				// otherwise we may end up deleting this object prior to searched()/found() being called.
-				m_aborted.wait(true);
-				//		for (unsigned timeout = 0; timeout < 100 && !m_aborted; ++timeout)
-				//			std::this_thread::sleep_for(chrono::milliseconds(30));
-				//		if (!m_aborted)
-				//			cwarn << "Couldn't abort. Abandoning OpenCL process.";
-			}
-
-			void reset()
 			{
 				UniqueGuard l(x_all);
-				m_aborted = m_abort = false;
-			}
+				if (m_aborted)
+					return;
+				//		cdebug << "Attempting to abort";
 
-		protected:
-			virtual bool found(uint64_t const* _nonces, uint32_t _count) override
-			{
-				//		dev::operator <<(std::cerr << "Found nonces: ", vector<uint64_t>(_nonces, _nonces + _count)) << std::endl;
-				for (uint32_t i = 0; i < _count; ++i)
-					if (m_owner->report(_nonces[i]))
-						return (m_aborted = true);
-				return m_owner->shouldStop();
+				m_abort = true;
 			}
+			// m_abort is true so now searched()/found() will return true to abort the search.
+			// we hang around on this thread waiting for them to point out that they have aborted since
+			// otherwise we may end up deleting this object prior to searched()/found() being called.
+			m_aborted.wait(true);
+			//		for (unsigned timeout = 0; timeout < 100 && !m_aborted; ++timeout)
+			//			std::this_thread::sleep_for(chrono::milliseconds(30));
+			//		if (!m_aborted)
+			//			cwarn << "Couldn't abort. Abandoning OpenCL process.";
+		}
 
-			virtual bool searched(uint64_t _startNonce, uint32_t _count) override
-			{
-				UniqueGuard l(x_all);
-				//		std::cerr << "Searched " << _count << " from " << _startNonce << std::endl;
-				m_owner->accumulateHashes(_count);
-				m_last = _startNonce + _count;
-				if (m_abort || m_owner->shouldStop())
+		void reset()
+		{
+			UniqueGuard l(x_all);
+			m_aborted = m_abort = false;
+		}
+
+	protected:
+		virtual bool found(uint64_t const* _nonces, uint32_t _count) override
+		{
+			//		dev::operator <<(std::cerr << "Found nonces: ", vector<uint64_t>(_nonces, _nonces + _count)) << std::endl;
+			for (uint32_t i = 0; i < _count; ++i)
+				if (m_owner->report(_nonces[i]))
 					return (m_aborted = true);
-				return false;
-			}
+			return m_owner->shouldStop();
+		}
 
-		private:
-			Mutex x_all;
-			uint64_t m_last;
-			bool m_abort = false;
-			Notified<bool> m_aborted = { true };
-			EthashCUDAMiner* m_owner = nullptr;
-		};
-	}
+		virtual bool searched(uint64_t _startNonce, uint32_t _count) override
+		{
+			UniqueGuard l(x_all);
+			//		std::cerr << "Searched " << _count << " from " << _startNonce << std::endl;
+			m_owner->accumulateHashes(_count);
+			m_last = _startNonce + _count;
+			if (m_abort || m_owner->shouldStop())
+				return (m_aborted = true);
+			return false;
+		}
+
+	private:
+		Mutex x_all;
+		uint64_t m_last;
+		bool m_abort = false;
+		Notified<bool> m_aborted = { true };
+		EthashCUDAMiner* m_owner = nullptr;
+	};
+}
 }
 
 unsigned EthashCUDAMiner::s_platformId = 0;
@@ -111,9 +110,9 @@ unsigned EthashCUDAMiner::s_numInstances = 0;
 int EthashCUDAMiner::s_devices[16] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 
 EthashCUDAMiner::EthashCUDAMiner(ConstructionInfo const& _ci) :
-GenericMiner<EthashProofOfWork>(_ci),
-Worker("cudaminer" + toString(index())),
-m_hook(new EthashCUDAHook(this))
+	GenericMiner<EthashProofOfWork>(_ci),
+	Worker("cudaminer" + toString(index())),
+m_hook( new EthashCUDAHook(this))
 {
 }
 
@@ -141,23 +140,19 @@ void EthashCUDAMiner::kickOff()
 
 void EthashCUDAMiner::workLoop()
 {
-
 	// take local copy of work since it may end up being overwritten by kickOff/pause.
 	try {
-
 		WorkPackage w = work();
 		//cnote << "set work; seed: " << "#" + w.seedHash.hex().substr(0, 8) + ", target: " << "#" + w.boundary.hex().substr(0, 12);
 		//too much note; ;)
-
 		if (!m_miner || m_minerSeed != w.seedHash)
 		{
-			//Guard l(cuda_work);
 			unsigned device = s_devices[index()] > -1 ? s_devices[index()] : index();
 
 			if (s_dagLoadMode == DAG_LOAD_MODE_SEQUENTIAL)
 			{
 				while (s_dagLoadIndex < index()) {
-					this_thread::sleep_for(chrono::seconds(3));
+					this_thread::sleep_for(chrono::seconds(1));
 				}
 			}
 			else if (s_dagLoadMode == DAG_LOAD_MODE_SINGLE)
@@ -166,7 +161,7 @@ void EthashCUDAMiner::workLoop()
 				{
 					// wait until DAG is created on selected device
 					while (s_dagInHostMemory == NULL) {
-						this_thread::sleep_for(chrono::seconds(1));
+						this_thread::sleep_for(chrono::seconds(3));
 					}
 				}
 				else
@@ -175,7 +170,6 @@ void EthashCUDAMiner::workLoop()
 					s_dagLoadIndex = 0;
 				}
 			}
-			//cnote << this->s_deviceId << this->s_dagLoadIndex;
 
 			cnote << "Initialising miner...";
 			m_minerSeed = w.seedHash;
@@ -187,7 +181,7 @@ void EthashCUDAMiner::workLoop()
 			light = EthashAux::light(w.seedHash);
 			//bytesConstRef dagData = dag->data();
 			bytesConstRef lightData = light->data();
-
+			
 			m_miner->init(light->light, lightData.data(), lightData.size(), device, (s_dagLoadMode == DAG_LOAD_MODE_SINGLE), &s_dagInHostMemory);
 			s_dagLoadIndex++;
 
@@ -204,12 +198,11 @@ void EthashCUDAMiner::workLoop()
 			}
 			//cout << "DAGLOADINDEX:"<< this->s_dagLoadIndex;
 			//cout << pack::deviceCount;
-			if (!(this->s_dagLoadIndex % pack::deviceCount)) 
-			{
+			if (!(this->s_dagLoadIndex % pack::deviceCount)){
 				pack::isInitOver = true;
 				pack::cond.notify_one();
 			}
-			//dequeue for lock  editor :wany
+				//dequeue for lock  editor :wany
 		}
 
 		uint64_t upper64OfBoundary = (uint64_t)(u64)((u256)w.boundary >> 192);

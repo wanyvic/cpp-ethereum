@@ -1022,10 +1022,10 @@ private:
 
 			while (client.isRunning())
 			{
-				//to stop minerlog. editor :wany  
+				//to stop minerlog. editor :wany
 				if (!pack::isInitOver)
 					continue;
-				//to stop minerlog. editor :wany   
+				//to stop minerlog. editor :wany
 
 				auto mp = f.miningProgress();
 				f.resetMiningProgress();
