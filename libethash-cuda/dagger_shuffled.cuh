@@ -1,9 +1,7 @@
 #include "ethash_cuda_miner_kernel_globals.h"
 #include "ethash_cuda_miner_kernel.h"
 #include "cuda_helper.h"
-
 #define PARALLEL_HASH 4
-
 __device__ uint64_t compute_hash(
 	uint64_t nonce
 	)
@@ -24,12 +22,11 @@ __device__ uint64_t compute_hash(
 		uint4 mix[PARALLEL_HASH];
 		uint32_t offset[PARALLEL_HASH];
 		uint32_t init0[PARALLEL_HASH];
-	
 		// share init among threads
 		for (int p = 0; p < PARALLEL_HASH; p++)
 		{
 			uint2 shuffle[8];
-			for (int j = 0; j < 8; j++) 
+			for (int j = 0; j < 8; j++)
 			{
 				shuffle[j].x = __shfl(state[j].x, i+p, THREADS_PER_HASH);
 				shuffle[j].y = __shfl(state[j].y, i+p, THREADS_PER_HASH);
@@ -43,6 +40,7 @@ __device__ uint64_t compute_hash(
 			}
 			init0[p] = __shfl(shuffle[0].x, 0, THREADS_PER_HASH);
 		}
+
 
 		for (uint32_t a = 0; a < ACCESSES; a += 4)
 		{
